@@ -1,0 +1,14 @@
+{
+  "keywords": ["已考勤", "到场", "参与"],
+  "semester": "2024-2025学年第X学期",
+  "activityTypes": ["活动", "讲座"],
+  "activityName": "",
+  "scoreType": "学业分",
+  "minScore": null,
+  "maxScore": null,
+  "classes": [],
+  "includeOtherCollege": true,
+  "sortByClass": true,
+  "useRegex": false
+}
+
