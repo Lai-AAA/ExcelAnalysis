@@ -321,8 +321,9 @@ function sortDataByAward(data) {
  * @param {Array} data - 数据数组
  * @param {Object} template - 模板配置
  * @param {String} filename - 文件名
+ * @param {String} activityType - 活动类型
  */
-export async function exportExcel(data, template, filename) {
+export async function exportExcel(data, template, filename, activityType = '活动') {
   // 判断是否为比赛类型
   const isCompetition = template.type === 'competition'
   
@@ -333,25 +334,37 @@ export async function exportExcel(data, template, filename) {
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('加分名单')
   
+  // 定义边框样式（所有框线）
+  const borderStyle = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+  
   // 定义样式
   const titleStyle = {
     font: { name: '微软雅黑', size: template.fontSizes?.title || 18, bold: true },
-    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }
+    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+    border: borderStyle
   }
   
   const noteStyle = {
     font: { name: '微软雅黑', size: template.fontSizes?.note || 12, color: { argb: 'FFFF0000' } }, // 红色
-    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }
+    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+    border: borderStyle
   }
   
   const headerStyle = {
     font: { name: '微软雅黑', size: template.fontSizes?.body || 11, bold: true },
-    alignment: { horizontal: 'center', vertical: 'middle' }
+    alignment: { horizontal: 'center', vertical: 'middle' },
+    border: borderStyle
   }
   
   const bodyStyle = {
     font: { name: '微软雅黑', size: template.fontSizes?.body || 11 },
-    alignment: { horizontal: 'center', vertical: 'middle' }
+    alignment: { horizontal: 'center', vertical: 'middle' },
+    border: borderStyle
   }
   
   let currentRow = 1
@@ -415,6 +428,20 @@ export async function exportExcel(data, template, filename) {
       worksheet.getRow(currentRow).height = template.rowHeights.body || 20
       currentRow++
     })
+    
+    // 在表格下方添加自定义注释（任务1）
+    if (template.customNote) {
+      worksheet.mergeCells(currentRow, 1, currentRow, totalCols)
+      const customNoteCell = worksheet.getCell(currentRow, 1)
+      customNoteCell.value = template.customNote
+      customNoteCell.style = {
+        font: { name: '微软雅黑', size: 12, color: { argb: 'FFFF0000' } }, // 红色
+        alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+        border: borderStyle
+      }
+      worksheet.getRow(currentRow).height = 24.5
+      currentRow++
+    }
   } else {
     // 活动/讲座类型：双列布局（A、B、C列和D、E、F列）
     // 设置列宽
@@ -436,69 +463,119 @@ export async function exportExcel(data, template, filename) {
     worksheet.getRow(currentRow).height = template.rowHeights.title || 69
     currentRow++
     
-    // 生成注释
-    const note = template.note
-    worksheet.mergeCells(currentRow, 1, currentRow, totalCols)
-    const noteCell = worksheet.getCell(currentRow, 1)
-    noteCell.value = note
-    noteCell.style = noteStyle
-    worksheet.getRow(currentRow).height = template.rowHeights.note || 24.5
-    currentRow++
-    
-    // 生成表头（双列布局）
-    const headerRow = currentRow
-    // 第一列表头
-    worksheet.getCell(headerRow, 1).value = '序号'
-    worksheet.getCell(headerRow, 1).style = headerStyle
-    worksheet.getCell(headerRow, 2).value = '班级'
-    worksheet.getCell(headerRow, 2).style = headerStyle
-    worksheet.getCell(headerRow, 3).value = '姓名'
-    worksheet.getCell(headerRow, 3).style = headerStyle
-    // 第二列表头
-    worksheet.getCell(headerRow, 4).value = '序号'
-    worksheet.getCell(headerRow, 4).style = headerStyle
-    worksheet.getCell(headerRow, 5).value = '班级'
-    worksheet.getCell(headerRow, 5).style = headerStyle
-    worksheet.getCell(headerRow, 6).value = '姓名'
-    worksheet.getCell(headerRow, 6).style = headerStyle
-    worksheet.getRow(headerRow).height = template.rowHeights.header || 20
-    currentRow++
-    
-    // 将数据分成两列显示，序号按"从上到下、从左到右"分配
-    const totalRows = Math.ceil(sortedData.length / 2)
-    
-    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
-      const dataRow = currentRow
-      
-      // 第一列数据（A、B、C列）
-      const firstIndex = rowIndex * 2
-      if (firstIndex < sortedData.length) {
-        const firstData = sortedData[firstIndex]
-        const firstSerial = firstIndex + 1
-        
-        worksheet.getCell(dataRow, 1).value = firstSerial
-        worksheet.getCell(dataRow, 1).style = bodyStyle
-        worksheet.getCell(dataRow, 2).value = firstData['行政班级'] || ''
-        worksheet.getCell(dataRow, 2).style = bodyStyle
-        worksheet.getCell(dataRow, 3).value = firstData['姓名'] || ''
-        worksheet.getCell(dataRow, 3).style = bodyStyle
+    // 根据加分分数分组（任务3）
+    const scoreGroups = {}
+    sortedData.forEach(row => {
+      const score = row['加分分数'] || 0
+      const scoreType = row['加分类型'] || '学业分'
+      const key = `${score}_${scoreType}`
+      if (!scoreGroups[key]) {
+        scoreGroups[key] = {
+          score,
+          scoreType,
+          data: []
+        }
       }
+      scoreGroups[key].data.push(row)
+    })
+    
+    // 按分数从高到低排序分组
+    const sortedGroups = Object.values(scoreGroups).sort((a, b) => b.score - a.score)
+    
+    // 遍历每个分组，每个分组都有独立的注释行和表头
+    sortedGroups.forEach((group) => {
+      // 在每个分组前添加注释行
+      const groupNote = `注：以下同学每人加${group.score}${group.scoreType}`
+      worksheet.mergeCells(currentRow, 1, currentRow, totalCols)
+      const groupNoteCell = worksheet.getCell(currentRow, 1)
+      groupNoteCell.value = groupNote
+      groupNoteCell.style = noteStyle
+      worksheet.getRow(currentRow).height = template.rowHeights.note || 24.5
+      currentRow++
       
-      // 第二列数据（D、E、F列）
-      const secondIndex = rowIndex * 2 + 1
-      if (secondIndex < sortedData.length) {
-        const secondData = sortedData[secondIndex]
-        const secondSerial = secondIndex + 1
+      // 生成表头（双列布局）
+      const headerRow = currentRow
+      // 第一列表头
+      worksheet.getCell(headerRow, 1).value = '序号'
+      worksheet.getCell(headerRow, 1).style = headerStyle
+      worksheet.getCell(headerRow, 2).value = '班级'
+      worksheet.getCell(headerRow, 2).style = headerStyle
+      worksheet.getCell(headerRow, 3).value = '姓名'
+      worksheet.getCell(headerRow, 3).style = headerStyle
+      // 第二列表头
+      worksheet.getCell(headerRow, 4).value = '序号'
+      worksheet.getCell(headerRow, 4).style = headerStyle
+      worksheet.getCell(headerRow, 5).value = '班级'
+      worksheet.getCell(headerRow, 5).style = headerStyle
+      worksheet.getCell(headerRow, 6).value = '姓名'
+      worksheet.getCell(headerRow, 6).style = headerStyle
+      worksheet.getRow(headerRow).height = template.rowHeights.header || 20
+      currentRow++
+      
+      const groupData = group.data
+      const totalCount = groupData.length
+      
+      // 计算第一列和第二列的人数（纵向排列：先填满A列，再填D列）
+      // 奇数时，第一列人数 = Math.ceil(totalCount / 2)，第二列人数 = totalCount - 第一列人数
+      const firstColCount = Math.ceil(totalCount / 2)
+      const secondColCount = totalCount - firstColCount
+      
+      // 计算需要的总行数（取两列中较大的行数）
+      const totalRows = Math.max(firstColCount, secondColCount)
+      
+      // 填充数据（纵向排列：A列1-firstColCount，D列firstColCount+1到totalCount，D列与A列对齐）
+      for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+        const dataRow = currentRow
         
-        worksheet.getCell(dataRow, 4).value = secondSerial
-        worksheet.getCell(dataRow, 4).style = bodyStyle
-        worksheet.getCell(dataRow, 5).value = secondData['行政班级'] || ''
-        worksheet.getCell(dataRow, 5).style = bodyStyle
-        worksheet.getCell(dataRow, 6).value = secondData['姓名'] || ''
-        worksheet.getCell(dataRow, 6).style = bodyStyle
+        // 第一列数据（A、B、C列）- 先填满第一列，序号1-firstColCount
+        if (rowIndex < firstColCount) {
+          const firstData = groupData[rowIndex]
+          worksheet.getCell(dataRow, 1).value = rowIndex + 1
+          worksheet.getCell(dataRow, 1).style = bodyStyle
+          worksheet.getCell(dataRow, 2).value = firstData['行政班级'] || ''
+          worksheet.getCell(dataRow, 2).style = bodyStyle
+          worksheet.getCell(dataRow, 3).value = firstData['姓名'] || ''
+          worksheet.getCell(dataRow, 3).style = bodyStyle
+        } else {
+          // 空单元格也需要边框
+          worksheet.getCell(dataRow, 1).style = bodyStyle
+          worksheet.getCell(dataRow, 2).style = bodyStyle
+          worksheet.getCell(dataRow, 3).style = bodyStyle
+        }
+        
+        // 第二列数据（D、E、F列）- 从第firstColCount+1个开始，与A列对齐，序号firstColCount+1到totalCount
+        if (rowIndex < secondColCount) {
+          const secondIndex = firstColCount + rowIndex
+          const secondData = groupData[secondIndex]
+          worksheet.getCell(dataRow, 4).value = firstColCount + rowIndex + 1
+          worksheet.getCell(dataRow, 4).style = bodyStyle
+          worksheet.getCell(dataRow, 5).value = secondData['行政班级'] || ''
+          worksheet.getCell(dataRow, 5).style = bodyStyle
+          worksheet.getCell(dataRow, 6).value = secondData['姓名'] || ''
+          worksheet.getCell(dataRow, 6).style = bodyStyle
+        } else {
+          // 空单元格也需要边框
+          worksheet.getCell(dataRow, 4).style = bodyStyle
+          worksheet.getCell(dataRow, 5).style = bodyStyle
+          worksheet.getCell(dataRow, 6).style = bodyStyle
+        }
+        
+        worksheet.getRow(dataRow).height = template.rowHeights.body || 20
+        currentRow++
       }
-      
-      worksheet.getRow(dataRow).height = template.rowHeights.body || 20
+    })
+    
+    // 在表格下方添加自定义注释（任务1）
+    if (template.customNote) {
+      worksheet.mergeCells(currentRow, 1, currentRow, totalCols)
+      const customNoteCell = worksheet.getCell(currentRow, 1)
+      customNoteCell.value = template.customNote
+      customNoteCell.style = {
+        font: { name: '微软雅黑', size: 12, color: { argb: 'FFFF0000' } }, // 红色
+        alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+        border: borderStyle
+      }
+      worksheet.getRow(currentRow).height = 24.5
       currentRow++
     }
   }

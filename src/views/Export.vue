@@ -40,14 +40,17 @@
           </el-select>
         </el-form-item>
         
-        <el-form-item label="加分分数" v-if="exportForm.activityType === '活动'">
-          <el-input-number
-            v-model="exportForm.score"
-            :min="0"
-            :max="10"
-            :precision="1"
-            placeholder="请输入加分分数"
+        <el-form-item label="添加注释" v-if="exportForm.activityType">
+          <el-input
+            v-model="exportForm.customNote"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入注释内容（可选）"
+            style="width: 100%"
           />
+          <div class="note-template-hint">
+            注：如对以上有异议请联系工学院团委/学生会XX（部门）干部XXX（联系方式）
+          </div>
         </el-form-item>
       </el-form>
     </el-card>
@@ -100,7 +103,7 @@ const exportForm = ref({
   activityName: '',
   semester: '',
   scoreType: '',
-  score: 1
+  customNote: ''
 })
 
 const previewData = ref([])
@@ -162,7 +165,6 @@ onMounted(() => {
     exportForm.value.activityType = firstRow['活动类型'] || '活动'
     exportForm.value.activityName = firstRow['活动名称'] || ''
     exportForm.value.scoreType = firstRow['加分类型'] || '学业分'
-    exportForm.value.score = firstRow['加分分数'] || 1
   }
   
   updatePreview()
@@ -200,8 +202,9 @@ const handleExport = async () => {
     await exportExcel(exportData, {
       ...template,
       title,
-      note
-    }, filename)
+      note,
+      customNote: exportForm.value.customNote || '注：如对以上有异议请联系工学院团委/学生会XX（部门）干部XXX（联系方式）'
+    }, filename, exportForm.value.activityType)
     
     // 保存导出历史
     saveExportHistory({
@@ -236,6 +239,13 @@ const goBack = () => {
 .action-buttons {
   text-align: center;
   margin-top: 30px;
+}
+
+.note-template-hint {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #000;
+  line-height: 1.5;
 }
 </style>
 
