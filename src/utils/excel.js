@@ -334,6 +334,48 @@ export async function exportExcel(data, template, filename, activityType = '活�
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('加分名单')
   
+  /**
+   * 行高转换函数
+   * ExcelJS设置的行高单位是"点"（points），但Excel显示时可能转换为像素
+   * 根据观察：设置值 / 显示值 ≈ 1.5
+   * 因此：设置值 = 期望显示值 × 1.5
+   */
+  const convertRowHeight = (displayHeight) => {
+    return displayHeight * 1.5
+  }
+  
+  /**
+   * 列宽转换函数
+   * ExcelJS设置的列宽单位是"字符宽度"
+   * 根据实际观察数据计算转换比例：
+   * - 4.75 → 4.09: 比例 = 4.75/4.09 ≈ 1.161
+   * - 27 → 26.36: 比例 = 27/26.36 ≈ 1.024
+   * - 8.25 → 7.64: 比例 = 8.25/7.64 ≈ 1.080
+   * - 16.25 → 15.64: 比例 = 16.25/15.64 ≈ 1.039
+   * - 7.25 → 6.64: 比例 = 7.25/6.64 ≈ 1.092
+   * 平均值约为 1.079，但考虑到不同列宽可能有差异，使用更精确的计算
+   * 反向转换：设置值 = 显示值 × (设置值/显示值)
+   * 为了得到期望的显示值，需要：设置值 = 期望显示值 × 转换系数
+   * 转换系数 = 原始设置值 / 实际显示值
+   * 使用加权平均：对于不同宽度的列，使用不同的转换系数
+   */
+  const convertColumnWidth = (displayWidth) => {
+    // 根据列宽范围使用不同的转换系数
+    if (displayWidth <= 5) {
+      // 窄列（如序号列）：使用 1.161
+      return displayWidth * 1.161
+    } else if (displayWidth <= 10) {
+      // 中等列（如姓名列）：使用 1.080
+      return displayWidth * 1.080
+    } else if (displayWidth <= 20) {
+      // 较宽列（如奖项列）：使用 1.039
+      return displayWidth * 1.039
+    } else {
+      // 宽列（如班级列）：使用 1.024
+      return displayWidth * 1.024
+    }
+  }
+  
   // 定义边框样式（所有框线）
   const borderStyle = {
     top: { style: 'thin' },
@@ -341,28 +383,28 @@ export async function exportExcel(data, template, filename, activityType = '活�
     bottom: { style: 'thin' },
     right: { style: 'thin' }
   }
-  
+
   // 定义样式
   const titleStyle = {
-    font: { name: '微软雅黑', size: template.fontSizes?.title || 18, bold: true },
+    font: { name: '微软雅黑', size: 18, bold: true },
     alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
     border: borderStyle
   }
   
   const noteStyle = {
-    font: { name: '微软雅黑', size: template.fontSizes?.note || 12, color: { argb: 'FFFF0000' } }, // 红色
+    font: { name: '微软雅黑', size: 12, color: { argb: 'FFFF0000' } }, // 红色
     alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
     border: borderStyle
   }
   
   const headerStyle = {
-    font: { name: '微软雅黑', size: template.fontSizes?.body || 11, bold: true },
+    font: { name: '微软雅黑', size: 11, bold: true },
     alignment: { horizontal: 'center', vertical: 'middle' },
     border: borderStyle
   }
   
   const bodyStyle = {
-    font: { name: '微软雅黑', size: template.fontSizes?.body || 11 },
+    font: { name: '微软雅黑', size: 11 },
     alignment: { horizontal: 'center', vertical: 'middle' },
     border: borderStyle
   }
@@ -371,12 +413,12 @@ export async function exportExcel(data, template, filename, activityType = '活�
   
   if (isCompetition) {
     // 比赛类型：单列布局（A、B、C、D、E列）
-    // 设置列宽
-    worksheet.getColumn(1).width = 4.75  // A列：序号
-    worksheet.getColumn(2).width = 27   // B列：行政班级
-    worksheet.getColumn(3).width = 8.25 // C列：姓名
-    worksheet.getColumn(4).width = 16.25 // D列：奖项
-    worksheet.getColumn(5).width = 7.25  // E列：加分数
+    // 设置列宽（使用转换函数）
+    worksheet.getColumn(1).width = convertColumnWidth(4.75)  // A列：序号
+    worksheet.getColumn(2).width = convertColumnWidth(27)   // B列：行政班级
+    worksheet.getColumn(3).width = convertColumnWidth(8.25) // C列：姓名
+    worksheet.getColumn(4).width = convertColumnWidth(16.25) // D列：奖项
+    worksheet.getColumn(5).width = convertColumnWidth(7.25)  // E列：加分数
     
     const totalCols = 5
     
@@ -386,7 +428,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
     const titleCell = worksheet.getCell(currentRow, 1)
     titleCell.value = title
     titleCell.style = titleStyle
-    worksheet.getRow(currentRow).height = template.rowHeights.title || 69
+    worksheet.getRow(currentRow).height = convertRowHeight(69)
     currentRow++
     
     // 生成注释
@@ -395,7 +437,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
     const noteCell = worksheet.getCell(currentRow, 1)
     noteCell.value = note
     noteCell.style = noteStyle
-    worksheet.getRow(currentRow).height = template.rowHeights.note || 24.5
+    worksheet.getRow(currentRow).height = convertRowHeight(24.5)
     currentRow++
     
     // 生成表头
@@ -410,7 +452,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
     worksheet.getCell(headerRow, 4).style = headerStyle
     worksheet.getCell(headerRow, 5).value = '加分数'
     worksheet.getCell(headerRow, 5).style = headerStyle
-    worksheet.getRow(headerRow).height = template.rowHeights.header || 20
+    worksheet.getRow(headerRow).height = convertRowHeight(20)
     currentRow++
     
     // 生成数据行（单列）
@@ -425,7 +467,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
       worksheet.getCell(currentRow, 4).style = bodyStyle
       worksheet.getCell(currentRow, 5).value = row['加分分数'] || ''
       worksheet.getCell(currentRow, 5).style = bodyStyle
-      worksheet.getRow(currentRow).height = template.rowHeights.body || 20
+      worksheet.getRow(currentRow).height = convertRowHeight(20)
       currentRow++
     })
     
@@ -439,18 +481,18 @@ export async function exportExcel(data, template, filename, activityType = '活�
         alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
         border: borderStyle
       }
-      worksheet.getRow(currentRow).height = 24.5
+      worksheet.getRow(currentRow).height = convertRowHeight(24.5)
       currentRow++
     }
   } else {
     // 活动/讲座类型：双列布局（A、B、C列和D、E、F列）
-    // 设置列宽
-    worksheet.getColumn(1).width = 4.75  // A列：序号
-    worksheet.getColumn(2).width = 27    // B列：行政班级
-    worksheet.getColumn(3).width = 8.25  // C列：姓名
-    worksheet.getColumn(4).width = 4.75  // D列：序号
-    worksheet.getColumn(5).width = 27    // E列：行政班级
-    worksheet.getColumn(6).width = 8.25 // F列：姓名
+    // 设置列宽（使用转换函数）
+    worksheet.getColumn(1).width = convertColumnWidth(4.75)  // A列：序号
+    worksheet.getColumn(2).width = convertColumnWidth(27)    // B列：行政班级
+    worksheet.getColumn(3).width = convertColumnWidth(8.25)  // C列：姓名
+    worksheet.getColumn(4).width = convertColumnWidth(4.75)  // D列：序号
+    worksheet.getColumn(5).width = convertColumnWidth(27)    // E列：行政班级
+    worksheet.getColumn(6).width = convertColumnWidth(8.25) // F列：姓名
     
     const totalCols = 6
     
@@ -460,7 +502,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
     const titleCell = worksheet.getCell(currentRow, 1)
     titleCell.value = title
     titleCell.style = titleStyle
-    worksheet.getRow(currentRow).height = template.rowHeights.title || 69
+    worksheet.getRow(currentRow).height = convertRowHeight(69)
     currentRow++
     
     // 根据加分分数分组（任务3）
@@ -490,7 +532,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
       const groupNoteCell = worksheet.getCell(currentRow, 1)
       groupNoteCell.value = groupNote
       groupNoteCell.style = noteStyle
-      worksheet.getRow(currentRow).height = template.rowHeights.note || 24.5
+      worksheet.getRow(currentRow).height = convertRowHeight(24.5)
       currentRow++
       
       // 生成表头（双列布局）
@@ -509,7 +551,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
       worksheet.getCell(headerRow, 5).style = headerStyle
       worksheet.getCell(headerRow, 6).value = '姓名'
       worksheet.getCell(headerRow, 6).style = headerStyle
-      worksheet.getRow(headerRow).height = template.rowHeights.header || 20
+      worksheet.getRow(headerRow).height = convertRowHeight(20)
       currentRow++
       
       const groupData = group.data
@@ -560,7 +602,7 @@ export async function exportExcel(data, template, filename, activityType = '活�
           worksheet.getCell(dataRow, 6).style = bodyStyle
         }
         
-        worksheet.getRow(dataRow).height = template.rowHeights.body || 20
+        worksheet.getRow(dataRow).height = convertRowHeight(20)
         currentRow++
       }
     })
@@ -575,8 +617,73 @@ export async function exportExcel(data, template, filename, activityType = '活�
         alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
         border: borderStyle
       }
-      worksheet.getRow(currentRow).height = 24.5
+      worksheet.getRow(currentRow).height = convertRowHeight(24.5)
       currentRow++
+    }
+  }
+  
+  // 为worksheet添加外边框（更粗的边框）
+  // 找到数据区域的边界
+  const lastRow = currentRow - 1
+  const lastCol = isCompetition ? 5 : 6
+  
+  // 定义外边框样式（更粗的边框）
+  const outerBorderStyle = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  }
+  
+  // 为第一行（标题行）添加顶部外边框
+  for (let col = 1; col <= lastCol; col++) {
+    const cell = worksheet.getCell(1, col)
+    const existingBorder = cell.style.border || {}
+    cell.style.border = {
+      ...existingBorder,
+      top: outerBorderStyle.top,
+      left: existingBorder.left || borderStyle.left,
+      bottom: existingBorder.bottom || borderStyle.bottom,
+      right: existingBorder.right || borderStyle.right
+    }
+  }
+  
+  // 为最后一行添加底部外边框
+  for (let col = 1; col <= lastCol; col++) {
+    const cell = worksheet.getCell(lastRow, col)
+    const existingBorder = cell.style.border || {}
+    cell.style.border = {
+      ...existingBorder,
+      top: existingBorder.top || borderStyle.top,
+      left: existingBorder.left || borderStyle.left,
+      bottom: outerBorderStyle.bottom,
+      right: existingBorder.right || borderStyle.right
+    }
+  }
+  
+  // 为第一列添加左侧外边框
+  for (let row = 1; row <= lastRow; row++) {
+    const cell = worksheet.getCell(row, 1)
+    const existingBorder = cell.style.border || {}
+    cell.style.border = {
+      ...existingBorder,
+      top: existingBorder.top || borderStyle.top,
+      left: outerBorderStyle.left,
+      bottom: existingBorder.bottom || borderStyle.bottom,
+      right: existingBorder.right || borderStyle.right
+    }
+  }
+  
+  // 为最后一列添加右侧外边框
+  for (let row = 1; row <= lastRow; row++) {
+    const cell = worksheet.getCell(row, lastCol)
+    const existingBorder = cell.style.border || {}
+    cell.style.border = {
+      ...existingBorder,
+      top: existingBorder.top || borderStyle.top,
+      left: existingBorder.left || borderStyle.left,
+      bottom: existingBorder.bottom || borderStyle.bottom,
+      right: outerBorderStyle.right
     }
   }
   
